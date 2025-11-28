@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Build artifacts (if not using Git LFS)
+# Uncomment these if you want to exclude builds from regular Git commits
+# *.dmg
+# *.app
+# dist/
+# build/
