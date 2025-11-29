@@ -14,6 +14,11 @@ GITHUB_REPO="nfcify/nfcify"
 # 배포 파일 경로
 DMG_PATH="dist/nfcify.dmg"
 APP_PATH="dist/nfcify.app.zip"
+
+# GitHub Personal Access Token (환경변수에서 읽기)
+# export GITHUB_TOKEN="your_token_here" 또는 ~/.bashrc, ~/.zshrc에 추가
+# 토큰 생성: https://github.com/settings/tokens (repo 권한 필요)
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 # ================================================
 
 VERSION=$1
@@ -76,17 +81,13 @@ if [ ! -f "$APP_PATH" ]; then
     APP_PATH=""
 fi
 
-# 5. GitHub CLI 확인
-if ! command -v gh &> /dev/null; then
-    echo "❌ GitHub CLI(gh)가 설치되지 않았습니다."
-    echo "💡 설치 방법: brew install gh"
-    exit 1
-fi
-
-# 6. GitHub 인증 확인
-if ! gh auth status &> /dev/null; then
-    echo "❌ GitHub 인증이 필요합니다."
-    echo "💡 인증 방법: gh auth login"
+# 5. GitHub Token 확인
+if [ -z "$GITHUB_TOKEN" ]; then
+    echo "❌ GITHUB_TOKEN 환경변수가 설정되지 않았습니다."
+    echo "💡 설정 방법:"
+    echo "   1. https://github.com/settings/tokens 에서 토큰 생성 (repo 권한 필요)"
+    echo "   2. export GITHUB_TOKEN=\"your_token_here\" 실행"
+    echo "   또는 ~/.bashrc, ~/.zshrc에 추가"
     exit 1
 fi
 
@@ -147,20 +148,65 @@ echo "✅ 태그 푸시 완료"
 echo ""
 echo "📤 GitHub Release 생성 중..."
 
-if [ -n "$APP_PATH" ]; then
-    gh release create "$TAG" \
-        "$DMG_PATH" \
-        "$APP_PATH" \
-        --title "$PROJECT_NAME $TAG" \
-        --notes-file "$RELEASE_NOTES_FILE"
-else
-    gh release create "$TAG" \
-        "$DMG_PATH" \
-        --title "$PROJECT_NAME $TAG" \
-        --notes-file "$RELEASE_NOTES_FILE"
+# 릴리즈 노트를 JSON 포맷으로 변환 (이스케이프 처리)
+RELEASE_BODY=$(jq -Rs . < "$RELEASE_NOTES_FILE")
+
+# GitHub API로 릴리즈 생성
+RELEASE_RESPONSE=$(curl -s -X POST \
+  -H "Authorization: token $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github.v3+json" \
+  "https://api.github.com/repos/$GITHUB_REPO/releases" \
+  -d "{
+    \"tag_name\": \"$TAG\",
+    \"name\": \"$PROJECT_NAME $TAG\",
+    \"body\": $RELEASE_BODY,
+    \"draft\": false,
+    \"prerelease\": false
+  }")
+
+# 릴리즈 ID 추출
+RELEASE_ID=$(echo "$RELEASE_RESPONSE" | jq -r .id)
+
+if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
+    echo "❌ 릴리즈 생성 실패"
+    echo "$RELEASE_RESPONSE" | jq .
+    rm "$RELEASE_NOTES_FILE"
+    exit 1
 fi
 
-# 11. 정리
+echo "✅ 릴리즈 생성 완료 (ID: $RELEASE_ID)"
+
+# 11. 파일 업로드
+echo ""
+echo "📤 DMG 파일 업로드 중..."
+
+UPLOAD_URL="https://uploads.github.com/repos/$GITHUB_REPO/releases/$RELEASE_ID/assets"
+DMG_FILENAME=$(basename "$DMG_PATH")
+
+curl -s -X POST \
+  -H "Authorization: token $GITHUB_TOKEN" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary "@$DMG_PATH" \
+  "$UPLOAD_URL?name=$DMG_FILENAME" > /dev/null
+
+echo "✅ DMG 파일 업로드 완료"
+
+# APP 파일이 있으면 업로드
+if [ -n "$APP_PATH" ]; then
+    echo ""
+    echo "📤 APP 파일 업로드 중..."
+    APP_FILENAME=$(basename "$APP_PATH")
+
+    curl -s -X POST \
+      -H "Authorization: token $GITHUB_TOKEN" \
+      -H "Content-Type: application/zip" \
+      --data-binary "@$APP_PATH" \
+      "$UPLOAD_URL?name=$APP_FILENAME" > /dev/null
+
+    echo "✅ APP 파일 업로드 완료"
+fi
+
+# 12. 정리
 rm "$RELEASE_NOTES_FILE"
 
 echo ""
