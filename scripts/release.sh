@@ -1,19 +1,21 @@
 #!/bin/bash
 
-# GitHub Release Script
-# 사용법: ./scripts/release.sh 0.1.0
+# GitHub Release Script for NFCify
+# 사용법: ./scripts/release.sh [version]
+# 버전을 생략하면 version.py에서 자동으로 읽어옵니다.
+# 
+# 이 스크립트는 다음 3개의 플랫폼 빌드를 배포합니다:
+# - macOS (Apple Silicon - arm64)
+# - macOS (Intel - x86_64)
+# - Windows (x86_64)
 
 set -e  # 에러 발생 시 스크립트 중단
 
 # ================================================
 # 프로젝트 설정
 # ================================================
-PROJECT_NAME="nfcify"
+PROJECT_NAME="NFCify"
 GITHUB_REPO="nfcify/nfcify"
-
-# 배포 파일 경로
-DMG_PATH="dist/nfcify.dmg"
-APP_PATH="dist/nfcify.app.zip"
 
 # GitHub Personal Access Token (환경변수에서 읽기)
 # export GITHUB_TOKEN="your_token_here" 또는 ~/.bashrc, ~/.zshrc에 추가
@@ -21,16 +23,33 @@ APP_PATH="dist/nfcify.app.zip"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 # ================================================
 
-VERSION=$1
-
-if [ -z "$VERSION" ]; then
-    echo "❌ 버전을 입력해주세요."
-    echo "사용법: $0 <version>"
-    echo "예시: $0 0.1.0"
-    exit 1
+# 버전 결정: 명령행 인자 또는 version.py에서 읽기
+if [ -n "$1" ]; then
+    VERSION=$1
+    echo "📌 명령행에서 지정한 버전 사용: $VERSION"
+else
+    # version.py에서 버전 읽기
+    if [ -f "version.py" ]; then
+        VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from version import __version__; print(__version__)")
+        echo "📌 version.py에서 버전 읽기: $VERSION"
+    else
+        echo "❌ version.py 파일을 찾을 수 없습니다."
+        echo "사용법: $0 [version]"
+        echo "예시: $0 0.1.0"
+        echo ""
+        echo "또는 nfcify 저장소 루트에 version.py 파일을 생성하세요."
+        exit 1
+    fi
 fi
 
 TAG="v$VERSION"
+
+# 배포 파일 경로 설정
+DMG_ARM64_PATH="dist/${PROJECT_NAME}-${VERSION}-macos-arm64.dmg"
+ZIP_ARM64_PATH="dist/${PROJECT_NAME}-${VERSION}-macos-arm64.zip"
+DMG_X86_64_PATH="dist/${PROJECT_NAME}-${VERSION}-macos-x86_64.dmg"
+ZIP_X86_64_PATH="dist/${PROJECT_NAME}-${VERSION}-macos-x86_64.zip"
+WINDOWS_EXE_PATH="dist/${PROJECT_NAME}-${VERSION}-windows.exe"
 
 echo "=================================================="
 echo "🚀 $PROJECT_NAME v$VERSION 배포를 시작합니다"
@@ -65,21 +84,45 @@ fi
 echo ""
 echo "📦 빌드 파일 확인 중..."
 
-if [ ! -f "$DMG_PATH" ]; then
-    echo "❌ $DMG_PATH 파일을 찾을 수 없습니다."
-    echo "💡 먼저 DMG 파일을 빌드해주세요."
-    exit 1
+MISSING_FILES=()
+
+if [ ! -f "$DMG_ARM64_PATH" ]; then
+    echo "⚠️  $DMG_ARM64_PATH 파일을 찾을 수 없습니다."
+    MISSING_FILES+=("macOS (Apple Silicon)")
 fi
 
-if [ ! -f "$APP_PATH" ]; then
-    echo "⚠️  $APP_PATH 파일을 찾을 수 없습니다."
-    read -p "APP 파일 없이 계속하시겠습니까? (y/n) " -n 1 -r
+if [ ! -f "$DMG_X86_64_PATH" ]; then
+    echo "⚠️  $DMG_X86_64_PATH 파일을 찾을 수 없습니다."
+    MISSING_FILES+=("macOS (Intel)")
+fi
+
+if [ ! -f "$WINDOWS_EXE_PATH" ]; then
+    echo "⚠️  $WINDOWS_EXE_PATH 파일을 찾을 수 없습니다."
+    MISSING_FILES+=("Windows")
+fi
+
+if [ ${#MISSING_FILES[@]} -gt 0 ]; then
+    echo ""
+    echo "❌ 다음 플랫폼의 빌드 파일이 없습니다:"
+    for platform in "${MISSING_FILES[@]}"; do
+        echo "   - $platform"
+    done
+    echo ""
+    echo "💡 빌드 파일을 먼저 생성해주세요:"
+    echo "   - macOS (Apple Silicon): nfcify-source에서 Apple Silicon Mac에서 빌드"
+    echo "   - macOS (Intel): nfcify-source에서 Intel Mac에서 빌드"
+    echo "   - Windows: nfcify-source에서 Windows에서 빌드"
+    echo ""
+    read -p "누락된 파일이 있어도 계속하시겠습니까? (y/n) " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         exit 1
     fi
-    APP_PATH=""
 fi
+
+echo "✅ 빌드 파일 확인 완료"
+echo ""
+
 
 # 5. GitHub Token 확인
 if [ -z "$GITHUB_TOKEN" ]; then
@@ -118,9 +161,22 @@ echo "📋 배포 정보 확인"
 echo "=================================================="
 echo "버전: $VERSION"
 echo "태그: $TAG"
-echo "DMG: $DMG_PATH"
-if [ -n "$APP_PATH" ]; then
-    echo "APP: $APP_PATH"
+echo ""
+echo "배포 파일:"
+if [ -f "$DMG_ARM64_PATH" ]; then
+    echo "  ✅ macOS (Apple Silicon): $DMG_ARM64_PATH"
+else
+    echo "  ❌ macOS (Apple Silicon): 파일 없음"
+fi
+if [ -f "$DMG_X86_64_PATH" ]; then
+    echo "  ✅ macOS (Intel): $DMG_X86_64_PATH"
+else
+    echo "  ❌ macOS (Intel): 파일 없음"
+fi
+if [ -f "$WINDOWS_EXE_PATH" ]; then
+    echo "  ✅ Windows: $WINDOWS_EXE_PATH"
+else
+    echo "  ❌ Windows: 파일 없음"
 fi
 echo ""
 echo "릴리즈 노트:"
@@ -149,7 +205,8 @@ echo ""
 echo "📤 GitHub Release 생성 중..."
 
 # 릴리즈 노트를 JSON 포맷으로 변환 (이스케이프 처리)
-RELEASE_BODY=$(jq -Rs . < "$RELEASE_NOTES_FILE")
+# 제어 문자를 안전하게 제거하고 JSON 변환
+RELEASE_BODY=$(cat "$RELEASE_NOTES_FILE" | tr -d '\000-\037' | jq -Rs .)
 
 # GitHub API로 릴리즈 생성
 RELEASE_RESPONSE=$(curl -s -X POST \
@@ -178,32 +235,78 @@ echo "✅ 릴리즈 생성 완료 (ID: $RELEASE_ID)"
 
 # 11. 파일 업로드
 echo ""
-echo "📤 DMG 파일 업로드 중..."
+echo "📤 빌드 파일 업로드 중..."
 
 UPLOAD_URL="https://uploads.github.com/repos/$GITHUB_REPO/releases/$RELEASE_ID/assets"
-DMG_FILENAME=$(basename "$DMG_PATH")
 
-curl -s -X POST \
-  -H "Authorization: token $GITHUB_TOKEN" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary "@$DMG_PATH" \
-  "$UPLOAD_URL?name=$DMG_FILENAME" > /dev/null
+# macOS (Apple Silicon) DMG 업로드
+if [ -f "$DMG_ARM64_PATH" ]; then
+    echo "📤 macOS (Apple Silicon) DMG 업로드 중..."
+    DMG_ARM64_FILENAME=$(basename "$DMG_ARM64_PATH")
+    
+    curl -s -X POST \
+      -H "Authorization: token $GITHUB_TOKEN" \
+      -H "Content-Type: application/octet-stream" \
+      --data-binary "@$DMG_ARM64_PATH" \
+      "$UPLOAD_URL?name=$DMG_ARM64_FILENAME" > /dev/null
+    
+    echo "✅ macOS (Apple Silicon) DMG 업로드 완료"
+fi
 
-echo "✅ DMG 파일 업로드 완료"
-
-# APP 파일이 있으면 업로드
-if [ -n "$APP_PATH" ]; then
-    echo ""
-    echo "📤 APP 파일 업로드 중..."
-    APP_FILENAME=$(basename "$APP_PATH")
-
+# macOS (Apple Silicon) ZIP 업로드
+if [ -f "$ZIP_ARM64_PATH" ]; then
+    echo "📤 macOS (Apple Silicon) ZIP 업로드 중..."
+    ZIP_ARM64_FILENAME=$(basename "$ZIP_ARM64_PATH")
+    
     curl -s -X POST \
       -H "Authorization: token $GITHUB_TOKEN" \
       -H "Content-Type: application/zip" \
-      --data-binary "@$APP_PATH" \
-      "$UPLOAD_URL?name=$APP_FILENAME" > /dev/null
+      --data-binary "@$ZIP_ARM64_PATH" \
+      "$UPLOAD_URL?name=$ZIP_ARM64_FILENAME" > /dev/null
+    
+    echo "✅ macOS (Apple Silicon) ZIP 업로드 완료"
+fi
 
-    echo "✅ APP 파일 업로드 완료"
+# macOS (Intel) DMG 업로드
+if [ -f "$DMG_X86_64_PATH" ]; then
+    echo "📤 macOS (Intel) DMG 업로드 중..."
+    DMG_X86_64_FILENAME=$(basename "$DMG_X86_64_PATH")
+    
+    curl -s -X POST \
+      -H "Authorization: token $GITHUB_TOKEN" \
+      -H "Content-Type: application/octet-stream" \
+      --data-binary "@$DMG_X86_64_PATH" \
+      "$UPLOAD_URL?name=$DMG_X86_64_FILENAME" > /dev/null
+    
+    echo "✅ macOS (Intel) DMG 업로드 완료"
+fi
+
+# macOS (Intel) ZIP 업로드
+if [ -f "$ZIP_X86_64_PATH" ]; then
+    echo "📤 macOS (Intel) ZIP 업로드 중..."
+    ZIP_X86_64_FILENAME=$(basename "$ZIP_X86_64_PATH")
+    
+    curl -s -X POST \
+      -H "Authorization: token $GITHUB_TOKEN" \
+      -H "Content-Type: application/zip" \
+      --data-binary "@$ZIP_X86_64_PATH" \
+      "$UPLOAD_URL?name=$ZIP_X86_64_FILENAME" > /dev/null
+    
+    echo "✅ macOS (Intel) ZIP 업로드 완료"
+fi
+
+# Windows EXE 업로드
+if [ -f "$WINDOWS_EXE_PATH" ]; then
+    echo "📤 Windows EXE 업로드 중..."
+    WINDOWS_EXE_FILENAME=$(basename "$WINDOWS_EXE_PATH")
+    
+    curl -s -X POST \
+      -H "Authorization: token $GITHUB_TOKEN" \
+      -H "Content-Type: application/octet-stream" \
+      --data-binary "@$WINDOWS_EXE_PATH" \
+      "$UPLOAD_URL?name=$WINDOWS_EXE_FILENAME" > /dev/null
+    
+    echo "✅ Windows EXE 업로드 완료"
 fi
 
 # 12. 정리

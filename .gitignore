@@ -1,3 +1,5 @@
+*.zip
+
 # macOS
 .DS_Store
 *.swp
