@@ -172,13 +172,21 @@ for file_path in "${FOUND_FILES[@]}"; do
         CONTENT_TYPE="application/octet-stream"
     fi
 
-    curl -s -X POST \
+    UPLOAD_RESPONSE=$(curl -s -X POST \
       -H "Authorization: token $GITHUB_TOKEN" \
       -H "Content-Type: $CONTENT_TYPE" \
       --data-binary "@$file_path" \
-      "$UPLOAD_URL?name=$filename" > /dev/null
+      "$UPLOAD_URL?name=$filename")
 
-    echo "✅ $filename 업로드 완료"
+    # 업로드 결과 확인
+    UPLOAD_STATE=$(echo "$UPLOAD_RESPONSE" | jq -r .state)
+    if [ "$UPLOAD_STATE" = "uploaded" ]; then
+        echo "✅ $filename 업로드 완료"
+    else
+        echo "❌ $filename 업로드 실패"
+        echo "$UPLOAD_RESPONSE" | jq .
+        exit 1
+    fi
 done
 
 echo ""
