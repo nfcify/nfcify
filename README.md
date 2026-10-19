@@ -11,9 +11,8 @@ macOS와 Windows에서 파일명의 유니코드 정규화(NFD → NFC 변환)�
 
 ### macOS
 
-1. 사용 중인 Mac에 맞는 ZIP 파일 다운로드
-   - **Apple Silicon** (M1/M2/M3): `arm64` 버전
-   - **Intel Mac**: `x86_64` 버전
+1. `NFCify-{version}-macos-universal2.zip` 다운로드 (Apple Silicon·Intel 공용)
+   - `arm64`·`x86_64` 이름의 ZIP 도 같은 파일입니다 (이전 버전 자동 업데이트 호환용)
 
 2. ZIP 파일 다운로드 → 자동 압축 해제
 
